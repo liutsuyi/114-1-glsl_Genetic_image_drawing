@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <title>GlslCanvas</title>
   <script type="text/javascript"
-    src="https://rawgit.com/patriciogonzalezvivo/glslCanvas/master/dist/GlslCanvas.js"></script>
+    src="dist/GlslCanvas.js"></script>
   <style>
     body {
       background: #101515;
@@ -21,8 +21,8 @@
 </head>
 
 <body>
-  <canvas id="glslCanvas" data-fragment-url="shaders/Hatching.frag" width="800" height="600"
-    data-textures="data/MonaLisa.jpg, data/hatch_0.jpg, data/hatch_1.jpg, data/hatch_2.jpg, data/hatch_3.jpg, data/hatch_4.jpg, data/hatch_5.jpg"></canvas>
+  <canvas id="glslCanvas" data-fragment-url="shaders/camouflage_v1.frag" width="900" height="600"
+    data-textures="data/DSC04309.JPG"></canvas>
 </body>
 <script>
   var canvas = document.getElementById("glslCanvas");
@@ -32,8 +32,6 @@
   var sandbox_title = "";
   var sandbox_author = "";
   var sandbox_thumbnail = "";
-  canvas.style.width = '100%';
-  canvas.style.height = '100%';
 </script>
 
 </html>

@@ -1,6 +1,8 @@
 // 20200220_glsl Genetic Face_v0.frag
 // Title: Genetic Face
 // Reference: https://www.shadertoy.com/view/XsGXWW
+//updated: tsuyi
+
 
 //#version 300 es
 //#extension GL_OES_standard_derivatives : enable

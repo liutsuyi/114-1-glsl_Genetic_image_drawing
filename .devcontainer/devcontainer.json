@@ -1,0 +1,35 @@
+{
+  "name": "GLSL Canvas (Live Server)",
+  // 使用一個通用的基礎映像檔，因為 Live Server 擴充功能不需要 Node.js
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  // 設定 VS Code 的客製化選項
+  "customizations": {
+    "vscode": {
+      // 自動安裝這些擴充功能
+      "extensions": [
+        "slevesque.shader",
+        "patriciogonzalezvivo.vscode-glsl-canvas", // GLSL 即時預覽與語法高亮
+        "ritwickdey.LiveServer", // 在瀏覽器中預覽網頁
+        "esbenp.prettier-vscode", // 程式碼格式化
+        "eamodio.gitlens", // 強化 Git 功能
+        "dbaeumer.vscode-eslint" // JavaScript 語法檢查
+      ],
+      "settings": {
+        // 讓 Live Server 在啟動時自動開啟瀏覽器
+        "liveServer.settings.donotShowInfoMsg": true,
+        "liveServer.settings.openBrowserOnStartup": true
+      }
+    }
+  },
+  // 當 Live Server 啟動時，Codespaces 會自動轉發其使用的連接埠 (預設為 5500)
+  // 您可以在 VS Code 右下角的「連接埠」分頁中看到它。
+  "forwardPorts": [
+    5500
+  ],
+  "portsAttributes": {
+    "5500": {
+      "label": "Live Server",
+      "onAutoForward": "openBrowser"
+    }
+  }
+}

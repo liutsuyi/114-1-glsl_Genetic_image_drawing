@@ -117,13 +117,16 @@ void main()
     // high-pass magnitude (亮度差的 proxy)
     float hp = length(texture2D(u_tex0, imageUV).rgb - blur);
     // scale high-pass 到 0..1（調整倍數可微調敏感度）
-    float focus = clamp(hp * 20.0, 0.0, 1.0);
+    // 提高敏感度並做非線性壓縮以增強 in-focus / out-of-focus 對比
+    float focusRaw = clamp(hp * 30.0, 0.0, 1.0);
+    float focus = pow(focusRaw, 1.8);
 
     // 根據 focus 決定尺度放大倍率與邊緣模糊參數
     // focus = 1 -> in-focus -> smaller brushes, sharper edges
     // focus = 0 -> out-of-focus -> larger brushes, softer edges
-    float radiiScale = mix(1.8, 0.6, focus); // out-of-focus scale up (1.8), in-focus shrink (0.6)
-    float edgeSoft = mix(0.25, 0.02, focus); // out-of-focus softer (0.25), in-focus sharper (0.02)
+    // 放大 radiiScale 範圍並讓 edgeSoft 差異更大以提升模糊對比
+    float radiiScale = mix(2.8, 0.45, focus); // out-of-focus 放大 (2.8), in-focus 縮小 (0.45)
+    float edgeSoft = mix(0.7, 0.003, focus);  // out-of-focus 邊緣更柔和 (0.7), in-focus 非常銳利 (0.003)
     vec3 radiiScaled = radii * radiiScale;
 
     vec4 testColor = vec4(Random_Final(testUV, iTime * 10.0),

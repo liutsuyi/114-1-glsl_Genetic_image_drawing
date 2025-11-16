@@ -138,16 +138,46 @@ void main()
     float edgeSoft = mix(outSoft, inSoft, focus);
     vec3 radiiScaled = radii * radiiScale;
 
-    vec4 testColor = vec4(Random_Final(testUV, iTime * 10.0),
-                          Random_Final(testUV, iTime * 11.0),
-                          Random_Final(testUV, iTime * 12.0),
-                          0.5); // make brush color semi-transparent (base alpha)
+    // Stroke index：以時間為 proxy，每秒一筆（視環境可調）。前 200 筆遵循原始隨機 / SOURCE_COLORS 模式，
+    // 之後的筆觸顏色會參考畫面周圍的顏色（從累積 buffer 取樣）並加入小幅變化。
+    float strokeIndexF = floor(iTime);
+    bool isEarly = strokeIndexF < 200.0;
+
+    vec4 testColor = vec4(0.0);
+    if(isEarly){
+        testColor = vec4(Random_Final(testUV, iTime * 10.0),
+                         Random_Final(testUV, iTime * 11.0),
+                         Random_Final(testUV, iTime * 12.0),
+                         0.5); // early: original random color
+    } else {
+        // sample local average color from the accumulated buffer around the brush center
+        float sx = 1.0 / iResolution.x;
+        float sy = 1.0 / iResolution.y;
+        vec3 avg = vec3(0.0);
+        // 3x3 sample around center (use u_buffer0 which stores previous accumulations)
+        for(int yy=-1; yy<=1; yy++){
+            for(int xx=-1; xx<=1; xx++){
+                vec2 off = vec2(float(xx)*sx, float(yy)*sy);
+                avg += texture2D(u_buffer0, clamp(center + off, vec2(0.0), vec2(1.0))).rgb;
+            }
+        }
+        avg /= 9.0;
+        // add small random perturbation based on testUV/time so colors vary but remain close to local average
+        vec3 noise = vec3(Random_Final(testUV, iTime * 10.0) - 0.5,
+                          Random_Final(testUV, iTime * 11.0) - 0.5,
+                          Random_Final(testUV, iTime * 12.0) - 0.5);
+        float perturb = 0.18; // 控制色彩偏移幅度
+        vec3 candidate = clamp(avg + noise * perturb, 0.0, 1.0);
+        testColor = vec4(candidate, 0.5);
+    }
 
 #ifdef SOURCE_COLORS
-    vec2 colorUV = vec2(Random_Final(testUV, iTime * 10.0),
-                        Random_Final(testUV, iTime * 11.0));
-
-    testColor = texture( u_tex1, colorUV );
+    // 若使用來源貼圖選色，僅在前 200 筆時套用（保留原始行為）；之後改為參考畫面周圍色彩
+    if(isEarly){
+        vec2 colorUV = vec2(Random_Final(testUV, iTime * 10.0),
+                            Random_Final(testUV, iTime * 11.0));
+        testColor = texture( u_tex1, colorUV );
+    }
 #endif
     // enforce semi-transparency even when using source colors
     testColor.a = 0.5;

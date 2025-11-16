@@ -90,9 +90,10 @@ void main()
     testUV = vec2(1.0, 1.0);   
 #endif
 
-    vec2 triPoint1 = vec2(Random_Final(testUV, iTime), Random_Final(testUV, iTime * 2.0));
-    vec2 triPoint2 = vec2(Random_Final(testUV, iTime * 3.0), Random_Final(testUV, iTime * 4.0));
-    vec2 triPoint3 = vec2(Random_Final(testUV, iTime * 5.0), Random_Final(testUV, iTime * 6.0));
+    // 改為使用多尺度圓形筆觸：產生圓心 center，並以多個 radius（尺度）做測試
+    vec2 center = vec2(Random_Final(testUV, iTime), Random_Final(testUV, iTime * 2.0));
+    // radii: 多尺度半徑（以 UV 空間為單位）。可根據需要調整數值或改為 uniform。
+    vec3 radii = vec3(0.005, 0.02, 0.06);
 
     vec4 testColor = vec4(Random_Final(testUV, iTime * 10.0),
                           Random_Final(testUV, iTime * 11.0),
@@ -116,8 +117,21 @@ void main()
 
     bool isInTriangle = true;
 
+// 使用多尺度圓形（取代三角形判斷）
 #ifdef TRIANGLES
-    isInTriangle = pointInTriangle(triPoint1, triPoint2, triPoint3, imageUV); 
+    // 計算該像素到圓心的距離，並檢查是否落在任一尺度的圓內；同時計算局部 alpha（由距離決定）
+    float d = distance(imageUV, center);
+    float a0 = 0.0;
+    if(d < radii.x) a0 = (1.0 - d / radii.x);
+    float a1 = 0.0;
+    if(d < radii.y) a1 = (1.0 - d / radii.y);
+    float a2 = 0.0;
+    if(d < radii.z) a2 = (1.0 - d / radii.z);
+    float brushAlpha = max(max(a0, a1), a2);
+    // 若 brushAlpha > 0 表示該像素屬於圓形筆觸範圍
+    isInTriangle = (brushAlpha > 0.0);
+    // 將 testColor 的 alpha 與 brushAlpha 乘起來，讓圓心處更不透明、邊緣淡出。
+    testColor.a *= brushAlpha;
 #endif
 
     // original

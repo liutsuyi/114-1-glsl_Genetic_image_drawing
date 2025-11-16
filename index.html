@@ -58,17 +58,25 @@
     // Reset button: 優先使用 sandbox.load() 重新載入 fragment 以清空累積 buffer，若無該 method 則 fallback reload page
     var resetBtn = document.getElementById('reset');
     resetBtn.addEventListener('click', function(){
-      try{
-        var fragUrl = canvas.getAttribute('data-fragment-url');
+      var fragUrl = canvas.getAttribute('data-fragment-url');
+      if(!fragUrl){
+        location.reload();
+        return;
+      }
+      // 使用 fetch 讀取 fragment 原始內容，再呼叫 sandbox.load(source)
+      fetch(fragUrl).then(function(resp){
+        if(!resp.ok) throw new Error('Fetch failed: ' + resp.status);
+        return resp.text();
+      }).then(function(src){
         if(sandbox && typeof sandbox.load === 'function'){
-          sandbox.load(fragUrl);
+          sandbox.load(src);
         } else {
           location.reload();
         }
-      }catch(e){
-        console.error('Reset failed, reloading page', e);
+      }).catch(function(err){
+        console.error('Reset fetch/load failed, reloading page', err);
         location.reload();
-      }
+      });
     });
   })();
 </script>

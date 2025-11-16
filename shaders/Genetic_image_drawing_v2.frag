@@ -22,6 +22,7 @@ uniform float u_time;
 uniform sampler2D u_tex0;		//data/CMH_oil_sad.png
 uniform sampler2D u_tex1;       //data/CMH_oil_joy.png
 uniform sampler2D u_buffer0;	//FBO from previous iterated frame
+uniform float u_aperture; // 0..1, 控制光圈大小（0: 小光圈，景深淺；1: 大光圈，景深強）
 
 // 這個 shader 分為兩個 pass：
 //  - PASS A (當定義 BUFFER_0 時)：在 buffer 上逐次生成隨機「圓形筆觸」（multi-scale circle brush），
@@ -117,16 +118,24 @@ void main()
     // high-pass magnitude (亮度差的 proxy)
     float hp = length(texture2D(u_tex0, imageUV).rgb - blur);
     // scale high-pass 到 0..1（調整倍數可微調敏感度）
-    // 提高敏感度並做非線性壓縮以增強 in-focus / out-of-focus 對比
-    float focusRaw = clamp(hp * 30.0, 0.0, 1.0);
-    float focus = pow(focusRaw, 1.8);
+    // aperture 影響敏感度：光圈大（u_aperture -> 1）時，對高頻更敏感，景深效果更明顯
+    float hpMult = mix(12.0, 60.0, clamp(u_aperture, 0.0, 1.0));
+    float focusRaw = clamp(hp * hpMult, 0.0, 1.0);
+    // 非線性壓縮指數也隨 aperture 調整（大光圈 -> 更強的非線性對比）
+    float focusPow = mix(1.0, 2.6, clamp(u_aperture, 0.0, 1.0));
+    float focus = pow(focusRaw, focusPow);
 
     // 根據 focus 決定尺度放大倍率與邊緣模糊參數
     // focus = 1 -> in-focus -> smaller brushes, sharper edges
     // focus = 0 -> out-of-focus -> larger brushes, softer edges
-    // 放大 radiiScale 範圍並讓 edgeSoft 差異更大以提升模糊對比
-    float radiiScale = mix(2.8, 0.45, focus); // out-of-focus 放大 (2.8), in-focus 縮小 (0.45)
-    float edgeSoft = mix(0.7, 0.003, focus);  // out-of-focus 邊緣更柔和 (0.7), in-focus 非常銳利 (0.003)
+    // 放大 radiiScale 與 edgeSoft 範圍，並讓 aperture 影響最大/最小值
+    float outMax = mix(1.8, 5.0, clamp(u_aperture, 0.0, 1.0));
+    float inMin  = mix(0.9, 0.25, clamp(u_aperture, 0.0, 1.0));
+    float radiiScale = mix(outMax, inMin, focus);
+
+    float outSoft = mix(0.25, 1.2, clamp(u_aperture, 0.0, 1.0));
+    float inSoft  = mix(0.05, 0.001, clamp(u_aperture, 0.0, 1.0));
+    float edgeSoft = mix(outSoft, inSoft, focus);
     vec3 radiiScaled = radii * radiiScale;
 
     vec4 testColor = vec4(Random_Final(testUV, iTime * 10.0),

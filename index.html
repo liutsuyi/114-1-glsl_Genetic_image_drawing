@@ -23,6 +23,12 @@
 <body>
   <canvas id="glslCanvas" data-fragment-url="shaders/Genetic_image_drawing_v2.frag" width="600" height="900"
     data-textures="data/DSC02066.JPG"></canvas>
+  <div id="controls" style="position: absolute; left: 20px; top: 20px; color: #eee; font-family: Arial, sans-serif;">
+    <label for="aperture">光圈 (Aperture)：</label>
+    <input id="aperture" type="range" min="0" max="1" step="0.01" value="0.5" style="vertical-align: middle;">
+    <span id="apertureVal">0.50</span>
+    <button id="reset" style="margin-left:12px; padding:4px 8px;">重新拍照 (Reset)</button>
+  </div>
 </body>
 <script>
   var canvas = document.getElementById("glslCanvas");
@@ -32,6 +38,39 @@
   var sandbox_title = "";
   var sandbox_author = "";
   var sandbox_thumbnail = "";
+
+  // Aperture slider -> 傳值給 shader 的 uniform `u_aperture`
+  (function(){
+    var aperture = document.getElementById('aperture');
+    var apertureVal = document.getElementById('apertureVal');
+    // Set initial uniform (some GlslCanvas builds expect setUniform to be called after creation)
+    if(sandbox && typeof sandbox.setUniform === 'function'){
+      sandbox.setUniform('u_aperture', parseFloat(aperture.value));
+    }
+
+    aperture.addEventListener('input', function(e){
+      var v = parseFloat(e.target.value);
+      apertureVal.textContent = v.toFixed(2);
+      if(sandbox && typeof sandbox.setUniform === 'function'){
+        sandbox.setUniform('u_aperture', v);
+      }
+    });
+    // Reset button: 優先使用 sandbox.load() 重新載入 fragment 以清空累積 buffer，若無該 method 則 fallback reload page
+    var resetBtn = document.getElementById('reset');
+    resetBtn.addEventListener('click', function(){
+      try{
+        var fragUrl = canvas.getAttribute('data-fragment-url');
+        if(sandbox && typeof sandbox.load === 'function'){
+          sandbox.load(fragUrl);
+        } else {
+          location.reload();
+        }
+      }catch(e){
+        console.error('Reset failed, reloading page', e);
+        location.reload();
+      }
+    });
+  })();
 </script>
 
 </html>

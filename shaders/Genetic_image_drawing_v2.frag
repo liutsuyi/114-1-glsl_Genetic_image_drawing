@@ -136,19 +136,42 @@ void main()
     float outSoft = mix(0.25, 1.2, clamp(u_aperture, 0.0, 1.0));
     float inSoft  = mix(0.05, 0.001, clamp(u_aperture, 0.0, 1.0));
     float edgeSoft = mix(outSoft, inSoft, focus);
-    vec3 radiiScaled = radii * radiiScale;
+
+    // --- 時間退火 (annealing) : 讓筆觸從大到小、由模糊到銳利
+    // timeT：整體退火進度 (0..1)，以及 tNorm 用於接受門檻退火
+    float timeT = clamp(iTime / 1200.0, 0.0, 1.0);
+    float tNorm = clamp(iTime / 600.0, 0.0, 1.0);
+
+    // radii 與 edgeSoft 隨時間逐步變小，幫助後期細節收斂
+    float sizeEndFactor = 0.45;
+    float radiiScaleAnnealed = mix(radiiScale, radiiScale * sizeEndFactor, timeT);
+    float edgeSoftAnnealed = mix(edgeSoft, max(0.001, edgeSoft * 0.18), timeT);
+    vec3 radiiScaled = radii * radiiScaleAnnealed;
 
     // Stroke index：以時間為 proxy，每秒一筆（視環境可調）。前 200 筆遵循原始隨機 / SOURCE_COLORS 模式，
     // 之後的筆觸顏色會參考畫面周圍的顏色（從累積 buffer 取樣）並加入小幅變化。
     float strokeIndexF = floor(iTime);
     bool isEarly = strokeIndexF < 200.0;
 
+    // --- 時間退火參數（alpha / perturb / mutation 基底）
+    float alphaStart = 0.6;
+    float alphaEnd = 0.12;
+    float baseAlpha = mix(alphaStart, alphaEnd, timeT);
+
+    float perturbStart = 0.22;
+    float perturbEnd   = 0.04;
+    float perturbAnneal = mix(perturbStart, perturbEnd, timeT);
+
+    float mutationBaseStart = 0.12;
+    float mutationBaseEnd   = 0.02;
+    float mutationBase = mix(mutationBaseStart, mutationBaseEnd, timeT);
+
     vec4 testColor = vec4(0.0);
     if(isEarly){
         testColor = vec4(Random_Final(testUV, iTime * 10.0),
                          Random_Final(testUV, iTime * 11.0),
                          Random_Final(testUV, iTime * 12.0),
-                         0.5); // early: original random color
+                         baseAlpha); // early: random color，但 alpha 會退火
     } else {
         // sample local average color from the accumulated buffer around the brush center
         float sx = 1.0 / iResolution.x;
@@ -166,9 +189,9 @@ void main()
         vec3 noise = vec3(Random_Final(testUV, iTime * 10.0) - 0.5,
                           Random_Final(testUV, iTime * 11.0) - 0.5,
                           Random_Final(testUV, iTime * 12.0) - 0.5);
-        float perturb = 0.18; // 控制色彩偏移幅度
+        float perturb = perturbAnneal; // 控制色彩偏移幅度（隨時間降低）
         vec3 candidate = clamp(avg + noise * perturb, 0.0, 1.0);
-        testColor = vec4(candidate, 0.5);
+        testColor = vec4(candidate, baseAlpha);
     }
 
 #ifdef SOURCE_COLORS
@@ -179,8 +202,8 @@ void main()
         testColor = texture( u_tex1, colorUV );
     }
 #endif
-    // enforce semi-transparency even when using source colors
-    testColor.a = 0.5;
+    // enforce semi-transparency even when使用來源色：改為使用退火後的 baseAlpha
+    testColor.a = baseAlpha;
     
     vec4 trueColor = texture2D( u_tex0, imageUV );
     vec4 prevColor = texture2D( u_buffer0, imageUV );
@@ -217,11 +240,29 @@ void main()
         // - testDiff：候選筆觸顏色（testColor）與目標圖像的距離。
         // - score = prevDiff - testDiff：若 score > 0，代表 testColor 比 prevColor 更接近目標（應接受）；反之則不接受。
         // 時間分段：在不同時間區間（u_time）下，接受條件方向可能會不同（backwards/forwards 演化）。
-        float prevDiff = abs(length(trueColor - prevColor));
-        float testDiff = abs(length(trueColor - testColor));
-        float score = prevDiff-testDiff;
-    if(u_time < 20.0 && score < 0.0) gl_FragColor = mix(prevColor, testColor, testColor.a);          //backwards evolution (blend)
-    else if(u_time >= 20.0 && score > 0.0) gl_FragColor = mix(prevColor, testColor, testColor.a);    //forward evolution (blend)
+            // 使用 squared error（L2^2）以增加對顏色差異的敏感度，並加入接受閾值 acceptEps（隨時間退火）
+            vec3 diffPrev = trueColor.rgb - prevColor.rgb;
+            vec3 diffTest = trueColor.rgb - testColor.rgb;
+            float prevDiff = dot(diffPrev, diffPrev);
+            float testDiff = dot(diffTest, diffTest);
+            float score = prevDiff - testDiff;
+
+            // 接受閾值退火（初期較寬鬆，後期變嚴格）
+            float epsStart = 0.006;
+            float epsEnd   = 0.0008;
+            float acceptEps = mix(epsStart, epsEnd, tNorm);
+
+            // 突變接受率已在上方以 mutationBase 計算，並與 focus 結合
+            float mutationProb = clamp(mutationBase + 0.12 * (1.0 - focus), 0.0, 1.0);
+            float mutR = Random_Final(imageUV, iTime * 13.0);
+            bool mutated = (mutR < mutationProb);
+
+            // 接受條件：分段時間判斷與突變
+            if(u_time < 20.0) {
+                if(score < -acceptEps || mutated) gl_FragColor = mix(prevColor, testColor, testColor.a);
+            } else {
+                if(score > acceptEps || mutated) gl_FragColor = mix(prevColor, testColor, testColor.a);
+            }
         
     }
 

@@ -28,6 +28,7 @@
     <input id="aperture" type="range" min="0" max="1" step="0.01" value="0.5" style="vertical-align: middle;">
     <span id="apertureVal">0.50</span>
     <button id="reset" style="margin-left:12px; padding:4px 8px;">重新拍照 (Reset)</button>
+    <button id="pauseBtn" style="margin-left:8px; padding:4px 8px;">暫停並儲存 (Pause & Save)</button>
   </div>
 </body>
 <script>
@@ -77,6 +78,38 @@
         console.error('Reset fetch/load failed, reloading page', err);
         location.reload();
       });
+    // Pause & Save 按鈕：暫停 shader 的更新，並將目前 canvas 匯出為 PNG
+    var pauseBtn = document.getElementById('pauseBtn');
+    var isPaused = false;
+    pauseBtn.addEventListener('click', function(){
+      if(!sandbox) return;
+      if(!isPaused){
+        // pause 更新
+        if(typeof sandbox.pause === 'function') sandbox.pause();
+        isPaused = true;
+        pauseBtn.textContent = '繼續 (Resume)';
+        // 強制一次 render 的成果已在畫面上，直接匯出 canvas
+        try{
+          // 儲存為 PNG 檔案
+          var dataURL = canvas.toDataURL('image/png');
+          var a = document.createElement('a');
+          a.href = dataURL;
+          var now = new Date();
+          var filename = 'glsl_capture_' + now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2) + '_' + now.getHours() + ('0'+now.getMinutes()).slice(-2) + (''+now.getSeconds()).padStart(2,'0') + '.png';
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }catch(e){
+          console.error('Export failed', e);
+        }
+      } else {
+        // resume
+        if(typeof sandbox.play === 'function') sandbox.play();
+        isPaused = false;
+        pauseBtn.textContent = '暫停並儲存 (Pause & Save)';
+      }
+    });
     });
   })();
 </script>

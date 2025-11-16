@@ -23,18 +23,18 @@ uniform sampler2D u_tex0;		//data/CMH_oil_sad.png
 uniform sampler2D u_tex1;       //data/CMH_oil_joy.png
 uniform sampler2D u_buffer0;	//FBO from previous iterated frame
 
-// 以下為中文註解說明：
 // 這個 shader 分為兩個 pass：
-//  - PASS A (當定義 BUFFER_0 時)：在 buffer 上逐次生成隨機三角形，判斷該像素是否在三角形內，
-//    計算該三角形色塊與目標圖像色差，根據時間軸決定 forward/backward 演化，並以 alpha 混合
-//    （半透明）將顏色與前一幀混合，達到漸進式繪製與演化的效果。
-//  - Main Pass (沒有定義 BUFFER_0)：直接把 buffer 的內容輸出到畫面。
+//  - PASS A (當定義 BUFFER_0 時)：在 buffer 上逐次生成隨機「圓形筆觸」（multi-scale circle brush），
+//    判斷像素是否落在筆觸範圍內，計算該筆觸色塊與目標圖像色差，根據時間軸決定 forward/backward 演化，
+//    並以 alpha 混合（半透明）將顏色與前一幀混合，達到漸進式繪製與演化的效果。
+//  - Main Pass (沒有定義 BUFFER_0)：直接把 buffer 的內容輸出到畫面（顯示累積結果）。
 //
 // 主要概念：
-//  - 使用 Random_Final() 根據測試 UV 與時間產生可復現的隨機數，用來決定三角形頂點與顏色。
-//  - 使用 pointInTriangle() 判斷當前像素是否落在隨機三角形內。
-//  - 若在三角形內，計算目前像素（prevColor）與目標 trueColor、以及 candidate testColor 的距離差，
-//    這個差值會決定是否「接受」該三角形顏色，並以半透明混合到 prevColor 上。
+//  - 使用 Random_Final() 根據測試 UV 與時間產生可復現的隨機數，用來決定筆觸圓心、顏色及尺度選擇。
+//  - 以多個 radius（多尺度）組合成筆觸，對每個像素計算到圓心的距離並生成局部 alpha（brushAlpha），
+//    以達到圓心不透明、邊緣漸淡的筆觸效果。
+//  - 若像素屬於筆觸範圍，計算目前畫面（prevColor）與目標 trueColor、以及候選筆觸色（testColor）的距離差，
+//    這個差值會決定是否接受該筆觸，採取半透明混合方式將其合成到 prevColor 上。
 //  - 透過 u_time 分段控制：前半段（例如 t < 20）做 backwards evolution，後半段做 forward evolution。
 
 
@@ -57,7 +57,7 @@ float Random_Final(vec2 uv, float seed)
 // Random_Final 說明：
 //  - 輸入：uv（位置或測試向量）與 seed（通常使用時間來產生不同序列）。
 //  - 輸出：0..1 之間的偽隨機值，會根據 uv 與 seed 固定產生相同結果（可復現）。
-//  - 用途：用來決定三角形頂點位置、顏色等隨機但可重現的參數。
+//  - 用途：用來決定筆觸圓心、顏色、以及隨機尺度或其它隨機參數。
 
 //Test if a point is in a triangle
 bool pointInTriangle(vec2 triPoint1, vec2 triPoint2, vec2 triPoint3, vec2 testPoint)
@@ -70,8 +70,9 @@ bool pointInTriangle(vec2 triPoint1, vec2 triPoint2, vec2 triPoint3, vec2 testPo
     return 0.0 <= a && a <= 1.0 && 0.0 <= b && b <= 1.0 && 0.0 <= c && c <= 1.0;
 }
 
-// pointInTriangle 說明：
+// pointInTriangle 說明（目前未使用）：
 //  - 使用 barycentric coordinates（重心座標）計算 testPoint 是否位於三角形內。
+//  - 此函式為原始三角形版本的輔助函式，當前實作已改為圓形筆觸，因此此函式保留但未被使用。
 //  - 若 a,b,c 都在 0..1 範圍內，即代表點落在三角形內。
 
 void main()
@@ -81,10 +82,10 @@ void main()
 
     // 每個像素的處理流程（摘要）：
     // 1. 以 imageUV 作為測試座標，或在宏 EVERY_PIXEL_SAME_COLOR 下固定 testUV
-    // 2. 以 Random_Final(testUV, iTime * k) 產生三角形頂點與顏色參數
-    // 3. 判斷該像素是否位於三角形內（isInTriangle），若是，計算 score 決定是否混入顏色
-    // 4. 混合使用 alpha（testColor.a）: gl_FragColor = mix(prevColor, testColor, testColor.a)
-    //    這樣可以達到半透明累積效果，而不是直接覆蓋畫面。
+    // 2. 以 Random_Final(testUV, iTime * k) 產生筆觸圓心、顏色及可能的尺度參數
+    // 3. 計算像素到圓心的距離，並以多尺度 radii 生成局部 alpha（brushAlpha）；若 brushAlpha>0 則屬於筆觸範圍
+    // 4. 若屬於筆觸範圍，計算 score 決定是否接受該筆觸；接受時以 alpha 混合到 prevColor（mix(prevColor, testColor, testColor.a)）
+    //    這樣可以達到半透明、多尺度筆觸逐步累積的效果，而不是直接覆蓋畫面。
 
 #ifdef EVERY_PIXEL_SAME_COLOR
     testUV = vec2(1.0, 1.0);   
@@ -92,13 +93,43 @@ void main()
 
     // 改為使用多尺度圓形筆觸：產生圓心 center，並以多個 radius（尺度）做測試
     vec2 center = vec2(Random_Final(testUV, iTime), Random_Final(testUV, iTime * 2.0));
-    // radii: 多尺度半徑（以 UV 空間為單位）。可根據需要調整數值或改為 uniform。
+    // 基本 radii: 多尺度半徑（以 UV 空間為單位）。稍後會依據焦點(focus)放大或縮小
     vec3 radii = vec3(0.005, 0.02, 0.06);
+
+    // ===== 景深控制 (Depth-of-field simulation) =====
+    // 使用 high-pass (原圖 - blur) 作為焦點指標：高值代表細節多、接近焦點（in-focus）
+    // 在景深內 (focus 高) 我們希望筆觸較小且邊緣銳利；景深外 (focus 低) 筆觸較大且邊緣模糊。
+    // 先做一個簡單的 3x3 box/gaussian blur 當作低通，接著以原圖 - 低通 得到 highpass。
+    float px = 1.0 / iResolution.x;
+    float py = 1.0 / iResolution.y;
+    vec3 blur = vec3(0.0);
+    // 3x3 Gaussian-like weights
+    blur += texture2D(u_tex0, imageUV + vec2(-px, -py)).rgb * 1.0;
+    blur += texture2D(u_tex0, imageUV + vec2( 0.0, -py)).rgb * 2.0;
+    blur += texture2D(u_tex0, imageUV + vec2( px, -py)).rgb * 1.0;
+    blur += texture2D(u_tex0, imageUV + vec2(-px,  0.0)).rgb * 2.0;
+    blur += texture2D(u_tex0, imageUV + vec2( 0.0,  0.0)).rgb * 4.0;
+    blur += texture2D(u_tex0, imageUV + vec2( px,  0.0)).rgb * 2.0;
+    blur += texture2D(u_tex0, imageUV + vec2(-px,  py)).rgb * 1.0;
+    blur += texture2D(u_tex0, imageUV + vec2( 0.0,  py)).rgb * 2.0;
+    blur += texture2D(u_tex0, imageUV + vec2( px,  py)).rgb * 1.0;
+    blur /= 16.0;
+    // high-pass magnitude (亮度差的 proxy)
+    float hp = length(texture2D(u_tex0, imageUV).rgb - blur);
+    // scale high-pass 到 0..1（調整倍數可微調敏感度）
+    float focus = clamp(hp * 20.0, 0.0, 1.0);
+
+    // 根據 focus 決定尺度放大倍率與邊緣模糊參數
+    // focus = 1 -> in-focus -> smaller brushes, sharper edges
+    // focus = 0 -> out-of-focus -> larger brushes, softer edges
+    float radiiScale = mix(1.8, 0.6, focus); // out-of-focus scale up (1.8), in-focus shrink (0.6)
+    float edgeSoft = mix(0.25, 0.02, focus); // out-of-focus softer (0.25), in-focus sharper (0.02)
+    vec3 radiiScaled = radii * radiiScale;
 
     vec4 testColor = vec4(Random_Final(testUV, iTime * 10.0),
                           Random_Final(testUV, iTime * 11.0),
                           Random_Final(testUV, iTime * 12.0),
-                          0.5); // make triangle color semi-transparent
+                          0.5); // make brush color semi-transparent (base alpha)
 
 #ifdef SOURCE_COLORS
     vec2 colorUV = vec2(Random_Final(testUV, iTime * 10.0),
@@ -121,16 +152,14 @@ void main()
 #ifdef TRIANGLES
     // 計算該像素到圓心的距離，並檢查是否落在任一尺度的圓內；同時計算局部 alpha（由距離決定）
     float d = distance(imageUV, center);
-    float a0 = 0.0;
-    if(d < radii.x) a0 = (1.0 - d / radii.x);
-    float a1 = 0.0;
-    if(d < radii.y) a1 = (1.0 - d / radii.y);
-    float a2 = 0.0;
-    if(d < radii.z) a2 = (1.0 - d / radii.z);
+    // 使用 smoothstep 以 edgeSoft 控制邊緣漸變寬度：越大越模糊
+    float a0 = 1.0 - smoothstep(radiiScaled.x * (1.0 - edgeSoft), radiiScaled.x, d);
+    float a1 = 1.0 - smoothstep(radiiScaled.y * (1.0 - edgeSoft), radiiScaled.y, d);
+    float a2 = 1.0 - smoothstep(radiiScaled.z * (1.0 - edgeSoft), radiiScaled.z, d);
     float brushAlpha = max(max(a0, a1), a2);
     // 若 brushAlpha > 0 表示該像素屬於圓形筆觸範圍
     isInTriangle = (brushAlpha > 0.0);
-    // 將 testColor 的 alpha 與 brushAlpha 乘起來，讓圓心處更不透明、邊緣淡出。
+    // 將 testColor 的 alpha 與 brushAlpha 乘起來，讓圓心處更不透明、邊緣漸淡，呈現自然的筆觸邊緣。
     testColor.a *= brushAlpha;
 #endif
 
@@ -143,7 +172,7 @@ void main()
     {
         // 決策說明：
         // - prevDiff：目前畫面（prevColor）與目標圖像（trueColor）的距離（誤差）。
-        // - testDiff：候選三角形顏色（testColor）與目標圖像的距離。
+        // - testDiff：候選筆觸顏色（testColor）與目標圖像的距離。
         // - score = prevDiff - testDiff：若 score > 0，代表 testColor 比 prevColor 更接近目標（應接受）；反之則不接受。
         // 時間分段：在不同時間區間（u_time）下，接受條件方向可能會不同（backwards/forwards 演化）。
         float prevDiff = abs(length(trueColor - prevColor));

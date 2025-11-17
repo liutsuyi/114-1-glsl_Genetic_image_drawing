@@ -39,6 +39,9 @@
     <div style="margin-bottom:8px;">
       <button id="reset" class="ctrl-btn">重製 (Reset)</button>
     </div>
+    <div style="margin-bottom:8px;">
+      <button id="downloadBtn" class="ctrl-btn">下載快照 (Download)</button>
+    </div>
     <!-- Pause 功能已移除 -->
   </div>
 </body>
@@ -119,6 +122,34 @@
     // Pause 功能已移除，保留 IIFE 結尾
   })();
 
+    // 下載快照：將目前畫布轉成 PNG 並觸發下載
+    (function(){
+      var downloadBtn = document.getElementById('downloadBtn');
+      if(!downloadBtn) return;
+      downloadBtn.addEventListener('click', function(){
+        try{
+          // 嘗試先強制 render 一次確保畫面為最新
+          if(sandbox){ sandbox.forceRender = true; }
+          requestAnimationFrame(function(){
+            try{
+              var dataURL = canvas.toDataURL('image/png');
+              var a = document.createElement('a');
+              a.href = dataURL;
+              a.download = 'genetic_snapshot_' + Date.now() + '.png';
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+            }catch(e){
+              console.error('下載快照失敗', e);
+              alert('下載失敗，請查看 console');
+            }
+          });
+        }catch(e){
+          console.error('快照錯誤', e);
+          alert('快照時發生錯誤，請查看 console');
+        }
+      });
+    })();
   // 送滑鼠座標到 shader（兼容沒有自動綁定的 GlslCanvas），並做 flash 淡入/淡出
   (function(){
     var flash = 0.0;            // 當前強度

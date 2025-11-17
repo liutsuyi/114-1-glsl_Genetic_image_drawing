@@ -27,8 +27,9 @@
     <div style="font-weight:600; margin-bottom:8px;">Controls</div>
     <label for="aperture">光圈 (Aperture)</label>
     <div style="display:flex; align-items:center; gap:8px; margin:6px 0 12px 0;">
-      <input id="aperture" type="range" min="0" max="1" step="0.01" value="0.5">
-      <span id="apertureVal">0.50</span>
+      <!-- 離散 f-stop 刻度模擬相機操作：index 0..8 對應 f/1.4..f/22 -->
+      <input id="aperture" type="range" min="0" max="8" step="1" value="4">
+      <span id="apertureVal">f/5.6</span>
     </div>
     <div style="margin-bottom:8px;">
       <button id="reset" class="ctrl-btn">重新拍照 (Reset)</button>
@@ -51,16 +52,24 @@
   (function(){
     var aperture = document.getElementById('aperture');
     var apertureVal = document.getElementById('apertureVal');
-    // Set initial uniform (some GlslCanvas builds expect setUniform to be called after creation)
+    // f-stop 刻度陣列（模擬相機刻度）
+    var fStops = [1.4, 2.0, 2.8, 4.0, 5.6, 8.0, 11.0, 16.0, 22.0];
+    var initialIndex = parseInt(aperture.value, 10) || 4;
+    // 初始化顯示為 f/5.6（index 4）或 input 的 value
+    apertureVal.textContent = 'f/' + fStops[initialIndex];
+    // Set initial uniform mapping index -> 0..1 (保留 shader 內使用的 0..1 u_aperture)
     if(sandbox && typeof sandbox.setUniform === 'function'){
-      sandbox.setUniform('u_aperture', parseFloat(aperture.value));
+      sandbox.setUniform('u_aperture', initialIndex / (fStops.length - 1));
     }
 
     aperture.addEventListener('input', function(e){
-      var v = parseFloat(e.target.value);
-      apertureVal.textContent = v.toFixed(2);
+      var idx = parseInt(e.target.value, 10);
+      var display = 'f/' + fStops[idx];
+      apertureVal.textContent = display;
+      // 把離散刻度 index 映射到 0..1 傳給 shader，實際 shader 行為不需真實 f 值
+      var mapped = idx / (fStops.length - 1);
       if(sandbox && typeof sandbox.setUniform === 'function'){
-        sandbox.setUniform('u_aperture', v);
+        sandbox.setUniform('u_aperture', mapped);
       }
     });
 

@@ -21,14 +21,21 @@
 </head>
 
 <body>
-  <canvas id="glslCanvas" data-fragment-url="shaders/Genetic_image_drawing_v2.frag" width="600" height="900"
-    data-textures="data/DSC02066.JPG"></canvas>
-  <div id="controls" style="position: absolute; left: 20px; top: 20px; color: #eee; font-family: Arial, sans-serif;">
-    <label for="aperture">光圈 (Aperture)：</label>
-    <input id="aperture" type="range" min="0" max="1" step="0.01" value="0.5" style="vertical-align: middle;">
-    <span id="apertureVal">0.50</span>
-    <button id="reset" style="margin-left:12px; padding:4px 8px;">重新拍照 (Reset)</button>
-    <button id="pauseBtn" style="margin-left:8px; padding:4px 8px;">暫停並儲存 (Pause & Save)</button>
+  <canvas id="glslCanvas" data-fragment-url="shaders/Genetic_image_drawing_v2.frag" width="600" height="900" data-textures="data/DSC02066.JPG"></canvas>
+
+  <div id="controls" class="controls">
+    <div style="font-weight:600; margin-bottom:8px;">Controls</div>
+    <label for="aperture">光圈 (Aperture)</label>
+    <div style="display:flex; align-items:center; gap:8px; margin:6px 0 12px 0;">
+      <input id="aperture" type="range" min="0" max="1" step="0.01" value="0.5">
+      <span id="apertureVal">0.50</span>
+    </div>
+    <div style="margin-bottom:8px;">
+      <button id="reset" class="ctrl-btn">重新拍照 (Reset)</button>
+    </div>
+    <div>
+      <button id="pauseBtn" class="ctrl-btn">暫停 (Pause)</button>
+    </div>
   </div>
 </body>
 <script>
@@ -56,6 +63,7 @@
         sandbox.setUniform('u_aperture', v);
       }
     });
+
     // Reset button: 優先使用 sandbox.load() 重新載入 fragment 以清空累積 buffer，若無該 method 則 fallback reload page
     var resetBtn = document.getElementById('reset');
     resetBtn.addEventListener('click', function(){
@@ -78,40 +86,51 @@
         console.error('Reset fetch/load failed, reloading page', err);
         location.reload();
       });
-    // Pause & Save 按鈕：暫停 shader 的更新，並將目前 canvas 匯出為 PNG
+    });
+
+    // Pause 按鈕：僅暫停/繼續演算（取消自動下載）
     var pauseBtn = document.getElementById('pauseBtn');
     var isPaused = false;
     pauseBtn.addEventListener('click', function(){
       if(!sandbox) return;
       if(!isPaused){
-        // pause 更新
         if(typeof sandbox.pause === 'function') sandbox.pause();
         isPaused = true;
         pauseBtn.textContent = '繼續 (Resume)';
-        // 強制一次 render 的成果已在畫面上，直接匯出 canvas
-        try{
-          // 儲存為 PNG 檔案
-          var dataURL = canvas.toDataURL('image/png');
-          var a = document.createElement('a');
-          a.href = dataURL;
-          var now = new Date();
-          var filename = 'glsl_capture_' + now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2) + '_' + now.getHours() + ('0'+now.getMinutes()).slice(-2) + (''+now.getSeconds()).padStart(2,'0') + '.png';
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        }catch(e){
-          console.error('Export failed', e);
-        }
       } else {
-        // resume
         if(typeof sandbox.play === 'function') sandbox.play();
         isPaused = false;
-        pauseBtn.textContent = '暫停並儲存 (Pause & Save)';
+        pauseBtn.textContent = '暫停 (Pause)';
       }
     });
-    });
   })();
+</script>
+
+<style>
+  /* 控制面板樣式（左側固定、半透明背景） */
+  .controls {
+    position: fixed;
+    left: 12px;
+    top: 20px;
+    width: 220px;
+    padding: 12px;
+    color: #eee;
+    font-family: Arial, sans-serif;
+    background: rgba(8,12,14,0.65);
+    border-radius: 8px;
+    z-index: 40;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+  }
+  /* 將畫布恢復為原本置中顯示，避免被裁切 */
+  #glslCanvas {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+  }
+  .ctrl-btn{ padding:6px 8px; background:#1f6; border: none; border-radius:4px; cursor:pointer;}
+</style>
 </script>
 
 </html>

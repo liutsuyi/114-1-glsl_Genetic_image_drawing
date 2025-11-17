@@ -23,6 +23,7 @@ uniform sampler2D u_tex0;		//data/CMH_oil_sad.png
 uniform sampler2D u_tex1;       //data/CMH_oil_joy.png
 uniform sampler2D u_buffer0;	//FBO from previous iterated frame
 uniform float u_aperture; // 0..1, 控制光圈大小（0: 小光圈，景深淺；1: 大光圈，景深強）
+uniform float u_hybridMix; // 0..1, 白天/夜景混合比例（0 = 完全白天 u_tex0, 1 = 完全夜景 u_tex1）
 
 // 這個 shader 分為兩個 pass：
 //  - PASS A (當定義 BUFFER_0 時)：在 buffer 上逐次生成隨機「圓形筆觸」（multi-scale circle brush），
@@ -104,19 +105,20 @@ void main()
     float px = 1.0 / iResolution.x;
     float py = 1.0 / iResolution.y;
     vec3 blur = vec3(0.0);
-    // 3x3 Gaussian-like weights
-    blur += texture2D(u_tex0, imageUV + vec2(-px, -py)).rgb * 1.0;
-    blur += texture2D(u_tex0, imageUV + vec2( 0.0, -py)).rgb * 2.0;
-    blur += texture2D(u_tex0, imageUV + vec2( px, -py)).rgb * 1.0;
-    blur += texture2D(u_tex0, imageUV + vec2(-px,  0.0)).rgb * 2.0;
-    blur += texture2D(u_tex0, imageUV + vec2( 0.0,  0.0)).rgb * 4.0;
-    blur += texture2D(u_tex0, imageUV + vec2( px,  0.0)).rgb * 2.0;
-    blur += texture2D(u_tex0, imageUV + vec2(-px,  py)).rgb * 1.0;
-    blur += texture2D(u_tex0, imageUV + vec2( 0.0,  py)).rgb * 2.0;
-    blur += texture2D(u_tex0, imageUV + vec2( px,  py)).rgb * 1.0;
+    // 3x3 Gaussian-like weights (對每個 sample 使用 hybrid day/night mix)
+    blur += mix(texture2D(u_tex0, imageUV + vec2(-px, -py)).rgb, texture2D(u_tex1, imageUV + vec2(-px, -py)).rgb, u_hybridMix) * 1.0;
+    blur += mix(texture2D(u_tex0, imageUV + vec2( 0.0, -py)).rgb, texture2D(u_tex1, imageUV + vec2( 0.0, -py)).rgb, u_hybridMix) * 2.0;
+    blur += mix(texture2D(u_tex0, imageUV + vec2( px, -py)).rgb, texture2D(u_tex1, imageUV + vec2( px, -py)).rgb, u_hybridMix) * 1.0;
+    blur += mix(texture2D(u_tex0, imageUV + vec2(-px,  0.0)).rgb, texture2D(u_tex1, imageUV + vec2(-px,  0.0)).rgb, u_hybridMix) * 2.0;
+    blur += mix(texture2D(u_tex0, imageUV + vec2( 0.0,  0.0)).rgb, texture2D(u_tex1, imageUV + vec2( 0.0,  0.0)).rgb, u_hybridMix) * 4.0;
+    blur += mix(texture2D(u_tex0, imageUV + vec2( px,  0.0)).rgb, texture2D(u_tex1, imageUV + vec2( px,  0.0)).rgb, u_hybridMix) * 2.0;
+    blur += mix(texture2D(u_tex0, imageUV + vec2(-px,  py)).rgb, texture2D(u_tex1, imageUV + vec2(-px,  py)).rgb, u_hybridMix) * 1.0;
+    blur += mix(texture2D(u_tex0, imageUV + vec2( 0.0,  py)).rgb, texture2D(u_tex1, imageUV + vec2( 0.0,  py)).rgb, u_hybridMix) * 2.0;
+    blur += mix(texture2D(u_tex0, imageUV + vec2( px,  py)).rgb, texture2D(u_tex1, imageUV + vec2( px,  py)).rgb, u_hybridMix) * 1.0;
     blur /= 16.0;
-    // high-pass magnitude (亮度差的 proxy)
-    float hp = length(texture2D(u_tex0, imageUV).rgb - blur);
+    // high-pass magnitude (以 hybrid image 作為焦點判定的 proxy)
+    vec3 hybridCenter = mix(texture2D(u_tex0, imageUV).rgb, texture2D(u_tex1, imageUV).rgb, u_hybridMix);
+    float hp = length(hybridCenter - blur);
     // scale high-pass 到 0..1（調整倍數可微調敏感度）
     // aperture 影響敏感度：光圈大（u_aperture -> 1）時，對高頻更敏感，景深效果更明顯
     float hpMult = mix(12.0, 60.0, clamp(u_aperture, 0.0, 1.0));
@@ -206,6 +208,8 @@ void main()
     testColor.a = baseAlpha;
     
     vec4 trueColor = texture2D( u_tex0, imageUV );
+    // hybridTarget 為白天 (u_tex0) 與夜景 (u_tex1) 混合後的判斷目標
+    vec4 hybridTarget = mix(trueColor, texture2D(u_tex1, imageUV), u_hybridMix);
     vec4 prevColor = texture2D( u_buffer0, imageUV );
 
 
@@ -218,9 +222,9 @@ void main()
     // 計算該像素到圓心的距離，並檢查是否落在任一尺度的圓內；同時計算局部 alpha（由距離決定）
     float d = distance(imageUV, center);
     // 使用 smoothstep 以 edgeSoft 控制邊緣漸變寬度：越大越模糊
-    float a0 = 1.0 - smoothstep(radiiScaled.x * (1.0 - edgeSoft), radiiScaled.x, d);
-    float a1 = 1.0 - smoothstep(radiiScaled.y * (1.0 - edgeSoft), radiiScaled.y, d);
-    float a2 = 1.0 - smoothstep(radiiScaled.z * (1.0 - edgeSoft), radiiScaled.z, d);
+    float a0 = 1.0 - smoothstep(radiiScaled.x * (1.0 - edgeSoftAnnealed), radiiScaled.x, d);
+    float a1 = 1.0 - smoothstep(radiiScaled.y * (1.0 - edgeSoftAnnealed), radiiScaled.y, d);
+    float a2 = 1.0 - smoothstep(radiiScaled.z * (1.0 - edgeSoftAnnealed), radiiScaled.z, d);
     float brushAlpha = max(max(a0, a1), a2);
     // 若 brushAlpha > 0 表示該像素屬於圓形筆觸範圍
     isInTriangle = (brushAlpha > 0.0);
@@ -241,8 +245,9 @@ void main()
         // - score = prevDiff - testDiff：若 score > 0，代表 testColor 比 prevColor 更接近目標（應接受）；反之則不接受。
         // 時間分段：在不同時間區間（u_time）下，接受條件方向可能會不同（backwards/forwards 演化）。
             // 使用 squared error（L2^2）以增加對顏色差異的敏感度，並加入接受閾值 acceptEps（隨時間退火）
-            vec3 diffPrev = trueColor.rgb - prevColor.rgb;
-            vec3 diffTest = trueColor.rgb - testColor.rgb;
+            // 使用 hybridTarget 做為接受判斷的標準（decision target）
+            vec3 diffPrev = hybridTarget.rgb - prevColor.rgb;
+            vec3 diffTest = hybridTarget.rgb - testColor.rgb;
             float prevDiff = dot(diffPrev, diffPrev);
             float testDiff = dot(diffTest, diffTest);
             float score = prevDiff - testDiff;

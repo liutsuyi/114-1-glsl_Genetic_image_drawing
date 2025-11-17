@@ -21,7 +21,7 @@
 </head>
 
 <body>
-  <canvas id="glslCanvas" data-fragment-url="shaders/Genetic_image_drawing_v2.frag" width="600" height="900" data-textures="data/DSC02066.JPG"></canvas>
+  <canvas id="glslCanvas" data-fragment-url="shaders/Genetic_image_drawing_v2.frag" width="600" height="900" data-textures="data/DSC02066.JPG,data/DSC02066_night.png"></canvas>
 
   <div id="controls" class="controls">
     <div style="font-weight:600; margin-bottom:8px;">Controls</div>
@@ -30,6 +30,11 @@
       <!-- 離散 f-stop 刻度模擬相機操作：index 0..8 對應 f/1.4..f/22 -->
       <input id="aperture" type="range" min="0" max="8" step="1" value="4">
       <span id="apertureVal">f/5.6</span>
+    </div>
+    <label for="hybrid">Hybrid 比例 (白天 ↔ 夜景)</label>
+    <div style="display:flex; align-items:center; gap:8px; margin:6px 0 12px 0;">
+      <input id="hybrid" type="range" min="0" max="1" step="0.01" value="0.0">
+      <span id="hybridVal">0%</span>
     </div>
     <div style="margin-bottom:8px;">
       <button id="reset" class="ctrl-btn">重新拍照 (Reset)</button>
@@ -70,6 +75,22 @@
       var mapped = idx / (fStops.length - 1);
       if(sandbox && typeof sandbox.setUniform === 'function'){
         sandbox.setUniform('u_aperture', mapped);
+      }
+    });
+
+    // 初始化 hybrid slider 顯示與 shader uniform
+    var hybrid = document.getElementById('hybrid');
+    var hybridVal = document.getElementById('hybridVal');
+    hybridVal.textContent = Math.round(parseFloat(hybrid.value) * 100) + '%';
+    if(sandbox && typeof sandbox.setUniform === 'function'){
+      sandbox.setUniform('u_hybridMix', parseFloat(hybrid.value));
+    }
+    // Hybrid slider 監聽器：更新顯示並傳入 shader
+    hybrid.addEventListener('input', function(e){
+      var v = parseFloat(e.target.value);
+      hybridVal.textContent = Math.round(v * 100) + '%';
+      if(sandbox && typeof sandbox.setUniform === 'function'){
+        sandbox.setUniform('u_hybridMix', v);
       }
     });
 

@@ -133,7 +133,28 @@
         pauseBtn.textContent = '暫停 (Pause)';
       }
     });
+
+    // 初始化 u_mouse（放在畫面外，預設手電筒關閉）
+    if(sandbox && typeof sandbox.setUniform === 'function'){
+      sandbox.setUniform('u_mouse', [-1.0, -1.0]);
+    }
+    // mouse / touch 支援：將滑鼠位置（normalized 0..1，Y 反向）傳給 shader 的 u_mouse
+    function setMousePos(clientX, clientY){
+      var rect = canvas.getBoundingClientRect();
+      var nx = (clientX - rect.left) / rect.width;
+      var ny = 1.0 - (clientY - rect.top) / rect.height; // shader 的 fragCoord 以左下為 origin
+      nx = Math.min(Math.max(nx, 0.0), 1.0);
+      ny = Math.min(Math.max(ny, 0.0), 1.0);
+      if(sandbox && typeof sandbox.setUniform === 'function'){
+        sandbox.setUniform('u_mouse', [nx, ny]);
+      }
+    }
+    canvas.addEventListener('mousemove', function(e){ setMousePos(e.clientX, e.clientY); });
+    canvas.addEventListener('mouseleave', function(){ if(sandbox && typeof sandbox.setUniform === 'function') sandbox.setUniform('u_mouse', [-1.0, -1.0]); });
+    canvas.addEventListener('touchstart', function(e){ e.preventDefault(); var t = e.touches[0]; setMousePos(t.clientX, t.clientY); });
+    canvas.addEventListener('touchmove', function(e){ e.preventDefault(); var t = e.touches[0]; setMousePos(t.clientX, t.clientY); });
   })();
+
 </script>
 
 <style>
@@ -161,6 +182,5 @@
   }
   .ctrl-btn{ padding:6px 8px; background:#1f6; border: none; border-radius:4px; cursor:pointer;}
 </style>
-</script>
 
 </html>

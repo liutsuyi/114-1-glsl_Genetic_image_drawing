@@ -279,9 +279,54 @@ void main()
 
 void main()
 {
-    vec2 uv=fragCoord/iResolution.xy;
-    // Main Pass：當沒有定義 BUFFER_0 時，直接把 buffer 的內容輸出到畫面（顯示累積結果）。
-    gl_FragColor = texture2D( u_buffer0, uv );
+        vec2 uv = fragCoord / iResolution.xy;
+        // Main Pass：顯示累積結果，並在滑鼠位置顯示 hybrid 預覽（手電筒效果）
+        vec4 bufferCol = texture2D(u_buffer0, uv);
+
+        // 計算 hybrid target 與其模糊版本，用於手電筒顯示
+        vec3 dayC = texture2D(u_tex0, uv).rgb;
+        vec3 nightC = texture2D(u_tex1, uv).rgb;
+        vec3 hybrid = mix(dayC, nightC, u_hybridMix);
+
+        // 3x3 blur of hybrid (simple gaussian-like)
+        float px = 1.0 / iResolution.x;
+        float py = 1.0 / iResolution.y;
+        vec3 blur = vec3(0.0);
+        blur += mix(texture2D(u_tex0, uv + vec2(-px, -py)).rgb, texture2D(u_tex1, uv + vec2(-px, -py)).rgb, u_hybridMix) * 1.0;
+        blur += mix(texture2D(u_tex0, uv + vec2( 0.0, -py)).rgb, texture2D(u_tex1, uv + vec2( 0.0, -py)).rgb, u_hybridMix) * 2.0;
+        blur += mix(texture2D(u_tex0, uv + vec2( px, -py)).rgb, texture2D(u_tex1, uv + vec2( px, -py)).rgb, u_hybridMix) * 1.0;
+        blur += mix(texture2D(u_tex0, uv + vec2(-px,  0.0)).rgb, texture2D(u_tex1, uv + vec2(-px,  0.0)).rgb, u_hybridMix) * 2.0;
+        blur += mix(texture2D(u_tex0, uv + vec2( 0.0,  0.0)).rgb, texture2D(u_tex1, uv + vec2( 0.0,  0.0)).rgb, u_hybridMix) * 4.0;
+        blur += mix(texture2D(u_tex0, uv + vec2( px,  0.0)).rgb, texture2D(u_tex1, uv + vec2( px,  0.0)).rgb, u_hybridMix) * 2.0;
+        blur += mix(texture2D(u_tex0, uv + vec2(-px,  py)).rgb, texture2D(u_tex1, uv + vec2(-px,  py)).rgb, u_hybridMix) * 1.0;
+        blur += mix(texture2D(u_tex0, uv + vec2( 0.0,  py)).rgb, texture2D(u_tex1, uv + vec2( 0.0,  py)).rgb, u_hybridMix) * 2.0;
+        blur += mix(texture2D(u_tex0, uv + vec2( px,  py)).rgb, texture2D(u_tex1, uv + vec2( px,  py)).rgb, u_hybridMix) * 1.0;
+        blur /= 16.0;
+
+        // mouse is expected normalized (0..1). u_mouse = [-1,-1] 表示關閉手電筒
+        bool mouseActive = (u_mouse.x >= 0.0 && u_mouse.y >= 0.0);
+        vec2 mouseUV = clamp(u_mouse, 0.0, 1.0);
+
+        // mix blurred & sharp based on distance for softer falloff
+        float radius = 0.18; // UV-space radius of flashlight
+        float soft = 0.06; // softness of outer fade
+        float rInner = radius * 0.6;
+        float rOuter = radius;
+        float d = distance(uv, mouseUV);
+
+        // t 用於混合 clear hybrid 與 blur：0 -> clear, 1 -> blur
+        float t = clamp((d - rInner) / (rOuter - rInner), 0.0, 1.0);
+        vec3 finalHybrid = mix(hybrid, blur, t);
+
+        // reveal 在 rOuter 內逐漸由 1 降到 0（超出 rOuter+soft 為 0）
+        float reveal = 0.0;
+        if(mouseActive){
+            reveal = 1.0 - smoothstep(rOuter, rOuter + soft, d);
+        }
+
+        // Composite: overlay finalHybrid onto buffer according to reveal
+        vec3 outCol = mix(bufferCol.rgb, finalHybrid, reveal);
+        gl_FragColor = vec4(outCol, 1.0);
 }
 
 #endif

@@ -171,10 +171,11 @@ void main()
 
     vec4 testColor = vec4(0.0);
     if(isEarly){
+        // 前期完全隨機顏色（保留原行為）
         testColor = vec4(Random_Final(testUV, iTime * 10.0),
                          Random_Final(testUV, iTime * 11.0),
                          Random_Final(testUV, iTime * 12.0),
-                         baseAlpha); // early: random color，但 alpha 會退火
+                         baseAlpha);
     } else {
         // sample local average color from the accumulated buffer around the brush center
         float sx = 1.0 / iResolution.x;
@@ -188,13 +189,25 @@ void main()
             }
         }
         avg /= 9.0;
+
+        // 原圖採樣比例從 strokeIndex >= 200 開始緩增
+        float sourceMixStart = 200.0;
+        float sourceMixDuration = 800.0; // 在接下來的 800 筆逐步過渡到完全採樣原圖（可調）
+        float sourceMix = clamp((strokeIndexF - sourceMixStart) / sourceMixDuration, 0.0, 1.0);
+
         // add small random perturbation based on testUV/time so colors vary but remain close to local average
         vec3 noise = vec3(Random_Final(testUV, iTime * 10.0) - 0.5,
                           Random_Final(testUV, iTime * 11.0) - 0.5,
                           Random_Final(testUV, iTime * 12.0) - 0.5);
-        float perturb = perturbAnneal; // 控制色彩偏移幅度（隨時間降低）
+        // 隨著越來越多從原圖採樣，減少 perturb 的影響
+        float perturb = perturbAnneal * (1.0 - sourceMix);
         vec3 candidate = clamp(avg + noise * perturb, 0.0, 1.0);
-        testColor = vec4(candidate, baseAlpha);
+
+        // 從原圖取色（使用筆觸中心 center 的 UV）
+        vec3 srcCol = texture2D(u_tex0, clamp(center, vec2(0.0), vec2(1.0))).rgb;
+        // 最終顏色為 local candidate 與原圖取色的混合，ratio 隨時間增加
+        vec3 finalCol = mix(candidate, srcCol, sourceMix);
+        testColor = vec4(finalCol, baseAlpha);
     }
 
 #ifdef SOURCE_COLORS

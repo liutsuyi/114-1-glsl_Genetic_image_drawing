@@ -258,16 +258,23 @@ void main()
             float epsEnd   = 0.0008;
             float acceptEps = mix(epsStart, epsEnd, tNorm);
 
-            // 突變接受率已在上方以 mutationBase 計算，並與 focus 結合
+            // 突變接受率（仍保留隨時間退火與 focus 影響）
             float mutationProb = clamp(mutationBase + 0.12 * (1.0 - focus), 0.0, 1.0);
             float mutR = Random_Final(imageUV, iTime * 13.0);
             bool mutated = (mutR < mutationProb);
 
-            // 接受條件：分段時間判斷與突變
-            if(u_time < 20.0) {
-                if(score < -acceptEps || mutated) gl_FragColor = mix(prevColor, testColor, testColor.a);
-            } else {
-                if(score > acceptEps || mutated) gl_FragColor = mix(prevColor, testColor, testColor.a);
+            // 機率性接受（可視化與「跳動式收斂」）：
+            // - 將 score 正規化相對於 acceptEps，然後用 tanh 拉成機率分布
+            // - 當 score 接近 0 時仍會有一定機率接受（避免後期完全停滯）
+            float scoreNorm = score / (acceptEps + 1e-5);
+            // 在 GLSL ES (WebGL1) 中某些內建函數如 tanh 可能不可用，改用 sigmoid 替代：
+            // sigmoid(x) = 1/(1+exp(-x))，當 x=0 時為 0.5；乘上 3.0 控制斜率
+            float acceptProb = 1.0 / (1.0 + exp(-scoreNorm * 3.0));
+            // 以 Random_Final 決定是否接受，或因突變而接受
+            float rAccept = Random_Final(imageUV, iTime * 14.0);
+            bool accept = (rAccept < acceptProb) || mutated;
+            if(accept){
+                gl_FragColor = mix(prevColor, testColor, testColor.a);
             }
         
     }

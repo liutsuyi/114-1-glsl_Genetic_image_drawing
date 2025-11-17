@@ -19,11 +19,12 @@ uniform float u_time;
 #define iResolution u_resolution
 #define iMouse u_mouse
 #define fragCoord gl_FragCoord.xy
-uniform sampler2D u_tex0;		//data/CMH_oil_sad.png
-uniform sampler2D u_tex1;       //data/CMH_oil_joy.png
+uniform sampler2D u_tex0;		//data/DSC02066.JPG
+uniform sampler2D u_tex1;       //data/DSC02066_night.png
 uniform sampler2D u_buffer0;	//FBO from previous iterated frame
 uniform float u_aperture; // 0..1, 控制光圈大小（0: 小光圈，景深淺；1: 大光圈，景深強）
 uniform float u_hybridMix; // 0..1, 白天/夜景混合比例（0 = 完全白天 u_tex0, 1 = 完全夜景 u_tex1）
+uniform float u_flash; // 0..1, 手電筒強度（滑鼠移入時趨近1，離開時趨近0）
 
 // 這個 shader 分為兩個 pass：
 //  - PASS A (當定義 BUFFER_0 時)：在 buffer 上逐次生成隨機「圓形筆觸」（multi-scale circle brush），
@@ -303,21 +304,15 @@ void main()
         blur += mix(texture2D(u_tex0, uv + vec2( px,  py)).rgb, texture2D(u_tex1, uv + vec2( px,  py)).rgb, u_hybridMix) * 1.0;
         blur /= 16.0;
 
-        // mouse in pixels -> uv
+        // mouse in pixels -> uv (注意：若 canvas 有 CSS 縮放，可能需要把 client coords 轉成畫布實際像素)
         vec2 mouseUV = clamp(u_mouse / iResolution, 0.0, 1.0);
-        // if mouse is (0,0) treat as off (no flashlight)
-        bool mouseActive = (u_mouse.x > 0.0 || u_mouse.y > 0.0);
 
-        vec3 highlight = hybrid;
         // mix blurred & sharp based on distance for softer falloff
         float radius = 0.18; // UV-space radius of flashlight
         float soft = 0.14; // softness of edge
         float d = distance(uv, mouseUV);
-        // reveal factor: 1 at center, 0 outside radius+soft
-        float reveal = 0.0;
-        if(mouseActive){
-            reveal = 1.0 - smoothstep(radius, radius + soft, d);
-        }
+        // reveal factor: 1 at center, 0 outside radius+soft, scaled by u_flash (淡入/淡出)
+        float reveal = u_flash * (1.0 - smoothstep(radius, radius + soft, d));
 
         // create a blended highlight between blurred outside and sharper center
         float sharpFactor = smoothstep(radius * 0.6, 0.0, d); // stronger in center

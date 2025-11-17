@@ -37,11 +37,9 @@
       <span id="hybridVal">0%</span>
     </div>
     <div style="margin-bottom:8px;">
-      <button id="reset" class="ctrl-btn">重新拍照 (Reset)</button>
+      <button id="reset" class="ctrl-btn">重製 (Reset)</button>
     </div>
-    <div>
-      <button id="pauseBtn" class="ctrl-btn">暫停 (Pause)</button>
-    </div>
+    <!-- Pause 功能已移除 -->
   </div>
 </body>
 <script>
@@ -118,21 +116,50 @@
       });
     });
 
-    // Pause 按鈕：僅暫停/繼續演算（取消自動下載）
-    var pauseBtn = document.getElementById('pauseBtn');
-    var isPaused = false;
-    pauseBtn.addEventListener('click', function(){
-      if(!sandbox) return;
-      if(!isPaused){
-        if(typeof sandbox.pause === 'function') sandbox.pause();
-        isPaused = true;
-        pauseBtn.textContent = '繼續 (Resume)';
-      } else {
-        if(typeof sandbox.play === 'function') sandbox.play();
-        isPaused = false;
-        pauseBtn.textContent = '暫停 (Pause)';
+    // Pause 功能已移除，保留 IIFE 結尾
+  })();
+
+  // 送滑鼠座標到 shader（兼容沒有自動綁定的 GlslCanvas），並做 flash 淡入/淡出
+  (function(){
+    var flash = 0.0;            // 當前強度
+    var targetFlash = 0.0;      // 目標強度
+
+    function sendMouse(e){
+      var rect = canvas.getBoundingClientRect();
+      var x = e.clientX - rect.left;
+      var y = e.clientY - rect.top;
+      // 將 client coords 轉換為 canvas 像素座標（處理 CSS 縮放）
+      var canvasX = x * (canvas.width / rect.width);
+      var canvasY = y * (canvas.height / rect.height);
+      if(sandbox && typeof sandbox.setUniform === 'function'){
+        sandbox.setUniform('u_mouse', [canvasX, canvasY]);
       }
-    });
+      targetFlash = 1.0;
+    }
+
+    function clearMouse(){
+      if(sandbox && typeof sandbox.setUniform === 'function'){
+        // 清除 mouse（設定為 0,0）
+        sandbox.setUniform('u_mouse', [0.0, 0.0]);
+      }
+      targetFlash = 0.0;
+    }
+
+    canvas.addEventListener('mousemove', sendMouse);
+    canvas.addEventListener('touchmove', function(ev){ ev.preventDefault(); var t = ev.touches[0]; sendMouse(t); }, {passive:false});
+    canvas.addEventListener('mouseleave', clearMouse);
+    canvas.addEventListener('touchend', clearMouse);
+
+    // 初始化 shader 的 u_flash
+    if(sandbox && typeof sandbox.setUniform === 'function') sandbox.setUniform('u_flash', 0.0);
+
+    // RAF loop：平滑地把 flash 逼近 targetFlash
+    (function animate(){
+      var k = 0.16; // 收斂速度
+      flash += (targetFlash - flash) * k;
+      if(sandbox && typeof sandbox.setUniform === 'function') sandbox.setUniform('u_flash', flash);
+      requestAnimationFrame(animate);
+    })();
   })();
 </script>
 
@@ -161,6 +188,6 @@
   }
   .ctrl-btn{ padding:6px 8px; background:#1f6; border: none; border-radius:4px; cursor:pointer;}
 </style>
-</script>
+</style>
 
 </html>

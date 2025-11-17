@@ -303,26 +303,25 @@ void main()
         blur += mix(texture2D(u_tex0, uv + vec2( px,  py)).rgb, texture2D(u_tex1, uv + vec2( px,  py)).rgb, u_hybridMix) * 1.0;
         blur /= 16.0;
 
-        // mouse is expected normalized (0..1). u_mouse = [-1,-1] 表示關閉手電筒
-        bool mouseActive = (u_mouse.x >= 0.0 && u_mouse.y >= 0.0);
-        vec2 mouseUV = clamp(u_mouse, 0.0, 1.0);
+        // mouse in pixels -> uv
+        vec2 mouseUV = clamp(u_mouse / iResolution, 0.0, 1.0);
+        // if mouse is (0,0) treat as off (no flashlight)
+        bool mouseActive = (u_mouse.x > 0.0 || u_mouse.y > 0.0);
 
+        vec3 highlight = hybrid;
         // mix blurred & sharp based on distance for softer falloff
         float radius = 0.18; // UV-space radius of flashlight
-        float soft = 0.06; // softness of outer fade
-        float rInner = radius * 0.6;
-        float rOuter = radius;
+        float soft = 0.14; // softness of edge
         float d = distance(uv, mouseUV);
-
-        // t 用於混合 clear hybrid 與 blur：0 -> clear, 1 -> blur
-        float t = clamp((d - rInner) / (rOuter - rInner), 0.0, 1.0);
-        vec3 finalHybrid = mix(hybrid, blur, t);
-
-        // reveal 在 rOuter 內逐漸由 1 降到 0（超出 rOuter+soft 為 0）
+        // reveal factor: 1 at center, 0 outside radius+soft
         float reveal = 0.0;
         if(mouseActive){
-            reveal = 1.0 - smoothstep(rOuter, rOuter + soft, d);
+            reveal = 1.0 - smoothstep(radius, radius + soft, d);
         }
+
+        // create a blended highlight between blurred outside and sharper center
+        float sharpFactor = smoothstep(radius * 0.6, 0.0, d); // stronger in center
+        vec3 finalHybrid = mix(blur, hybrid, clamp(sharpFactor, 0.0, 1.0));
 
         // Composite: overlay finalHybrid onto buffer according to reveal
         vec3 outCol = mix(bufferCol.rgb, finalHybrid, reveal);

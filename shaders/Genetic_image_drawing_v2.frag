@@ -1,7 +1,7 @@
 // 20200220_glsl Genetic Face_v0.frag
-// Title: Genetic Face
-// Reference: https://www.shadertoy.com/view/XsGXWW
-//updated: tsuyi
+// 標題：Genetic Face（遺傳繪製）
+// 參考： https://www.shadertoy.com/view/XsGXWW
+// 更新： tsuyi
 
 
 //#version 300 es
@@ -47,7 +47,7 @@ uniform float u_aperture; // 0..1, 控制光圈大小（0: 小光圈，景深淺
 #define EVERY_PIXEL_SAME_COLOR
 #define TRIANGLES
 
-//Randomness code from Martin, here: https://www.shadertoy.com/view/XlfGDS
+// 隨機函式來源（Martin），範例與參考： https://www.shadertoy.com/view/XlfGDS
 float Random_Final(vec2 uv, float seed)
 {
     float fixedSeed = abs(seed) + 1.0;
@@ -60,7 +60,7 @@ float Random_Final(vec2 uv, float seed)
 //  - 輸出：0..1 之間的偽隨機值，會根據 uv 與 seed 固定產生相同結果（可復現）。
 //  - 用途：用來決定筆觸圓心、顏色、以及隨機尺度或其它隨機參數。
 
-//Test if a point is in a triangle
+// 判斷一個點是否位於三角形內（重心座標法）
 bool pointInTriangle(vec2 triPoint1, vec2 triPoint2, vec2 triPoint3, vec2 testPoint)
 {
     float denominator = ((triPoint2.y - triPoint3.y)*(triPoint1.x - triPoint3.x) + (triPoint3.x - triPoint2.x)*(triPoint1.y - triPoint3.y));
@@ -71,10 +71,10 @@ bool pointInTriangle(vec2 triPoint1, vec2 triPoint2, vec2 triPoint3, vec2 testPo
     return 0.0 <= a && a <= 1.0 && 0.0 <= b && b <= 1.0 && 0.0 <= c && c <= 1.0;
 }
 
-// pointInTriangle 說明（目前未使用）：
-//  - 使用 barycentric coordinates（重心座標）計算 testPoint 是否位於三角形內。
-//  - 此函式為原始三角形版本的輔助函式，當前實作已改為圓形筆觸，因此此函式保留但未被使用。
-//  - 若 a,b,c 都在 0..1 範圍內，即代表點落在三角形內。
+    // pointInTriangle 說明（目前未使用）：
+    //  - 使用重心座標（barycentric coordinates）來判斷 testPoint 是否落在三角形內。
+    //  - 此函式為原始三角形筆觸版本的輔助函式，現行實作改為多尺度圓形筆觸，故保留但未使用。
+    //  - 若 a、b、c 都位於 0..1 範圍內，則 testPoint 在三角形內。
 
 void main()
 {
